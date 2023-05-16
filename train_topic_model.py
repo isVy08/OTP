@@ -72,11 +72,10 @@ def evaluate(model, corpus, K, print_output = False):
 
 if __name__ == "__main__":
     
-    device_ids = [0,1,2,3]
+    device_ids = [1,2]
     import sys 
-    dataset_name = sys.argv[2] # 20NewsGroup, BBC_News, DBLP
     action = sys.argv[1]
-
+    dataset_name = sys.argv[2] # '20NewsGroup', 'BBC_News', 'DBLP'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu', device_ids[0])
 
     dataset = Dataset()
@@ -99,7 +98,7 @@ if __name__ == "__main__":
     lr = 1e-3
     B = 50
     D = 50
-    tau = 2.5
+    tau = 2.0
     model_path = f'model/topic_{dataset_name}.pt'
     
     train_indices = list(range(X.size(0)))
@@ -109,7 +108,7 @@ if __name__ == "__main__":
     model.to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = None 
+    scheduler = None
     num_epochs = 1000
     weight = 0.1
 
@@ -130,7 +129,7 @@ if __name__ == "__main__":
             print('Saving model ...')
             torch.save({'model_state_dict': model.module.state_dict() ,
                         'optimizer_state_dict': optimizer.state_dict(),
-                        # 'scheduler_state_dict': scheduler.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
                         'prev_loss': prev_loss,
                         }, model_path)
 

@@ -38,8 +38,6 @@ class TopicBackward(nn.Module):
         logits = torch.mul(logits, ones)  
         z = self.sampler(logits)
 
-        
-       
         # [B, L, K]
         return z
 
@@ -47,52 +45,41 @@ class TopicForward(nn.Module):
     
     def __init__(self, V, K, tau):
         super(TopicForward, self).__init__()
-        self.beta = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, K, V)))
-        self.sampler = Sample_Categorical(tau)
+        self.gamma = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, K, V)))
 
     def forward(self, z):
         # [B, L, K]
         
-        beta = torch.matmul(z, self.beta)
-        x = torch.softmax(beta, dim = -1)
-        # x = self.sampler(beta)
-        
+        gamma = torch.matmul(z, self.gamma)
+        x = torch.softmax(gamma, dim = -1)
         
         # [B, L, V]
         return x
 
 class TopicPrior(nn.Module):
-    def __init__(self, K, learnable = True):
+    def __init__(self, K):
         super(TopicPrior, self).__init__()
         
-        self.learnable = learnable
-        if learnable:
-            self.alpha = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, 1, K)))
-            self.sampler = Sample_Dirichlet()
-        else: 
-            alpha = torch.ones(K) / K
-            self.sampler = torch.distributions.dirichlet.Dirichlet(alpha)
-    
+        self.alpha = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, 1, K)))
+        self.sampler = Sample_Dirichlet()
+         
     def forward(self, x):
         batch_size  = x.size(0)
         L = x.size(1)
-        if self.learnable:
-            ones = torch.ones((batch_size, L, 1), device = x.device).float()
-            alpha = torch.softmax(self.alpha, dim = -1)
-            alpha_batch = torch.matmul(ones, alpha)
-            z = self.sampler(alpha_batch)
-        else:
-            z = self.sampler.sample((batch_size, L ))
-            z = z.to(x.device)
+        
+        ones = torch.ones((batch_size, L, 1), device = x.device).float()
+        alpha = torch.softmax(self.alpha, dim = -1)
+        alpha_batch = torch.matmul(ones, alpha)
+        z = self.sampler(alpha_batch)
             
         return z
 
 class TopicModel(nn.Module):
-    def __init__(self, L, V, K, H, D, tau, learnable = True):
+    def __init__(self, L, V, K, H, D, tau):
         super(TopicModel, self).__init__()
         self.backward_fn = TopicBackward(L, V, K, H, D, tau)
         self.forward_fn = TopicForward(V, K, tau)
-        self.prior = TopicPrior(K, learnable)
+        self.prior = TopicPrior(K)
          
 
     def forward(self, x):

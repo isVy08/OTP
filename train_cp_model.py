@@ -22,10 +22,8 @@ def plot_result(predicted, source):
     ax.set_ylabel("latent rate")
     ax.set_xlabel("time")
     ax.set_title("Inferred latent rate over time")
-    ax.legend(loc=4);
+    ax.legend(loc=4)
     plt.show()
-    plt.savefig('segment.pdf')
-    plt.savefig('segment.png')
 
 
 # Generating data 
@@ -51,7 +49,7 @@ else:
     np.save(data_path, observed_counts)
     plt.figure()
     plt.plot(observed_counts)
-    plt.savefig('cp.png')
+    # plt.savefig('cp.png')
 
 
 arr = observed_counts.reshape(-1, 1)
@@ -64,16 +62,14 @@ m, s = 4, 1
 L = 64
 lr = 1e-3
 p = 0.95
-D = X.size(0)
-
 
 model_path = sys.argv[2]
 
-model = PoissonModel(D, K, L, tau, p, m, s)
+model = PoissonModel(K, L, tau, p, m, s)
 model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-num_epochs = 50000
+num_epochs = 20000
 
 if os.path.isfile(model_path):
     prev_loss = load_model(model, optimizer, None, model_path, device)
@@ -110,19 +106,6 @@ if action == 'train':
                         'prev_loss': prev_loss,
                         }, model_path)
 
-    # file = open('cp.txt', 'a+')    
-    # model.eval()
-    # logits, _ = model.backward_fn(X)
-    # Z = logits.argmax(-1)
-    # rate = torch.exp(model.forward_fn.rate)
-    # states = np.array([rate[st].item() for st in Z]).tolist()
-    # file.write(str(states)+'\n')
-    # file.close()
-
-    # print(rate, Z)
-    
-
-
 
 else:
     print('Evaluation begins ...')
@@ -135,22 +118,3 @@ else:
     Z = logits.argmax(-1)
     rate = torch.exp(model.forward_fn.rate)
     print(rate, Z)
-    
-    # from utils_io import load_txt
-    # allstates = load_txt('cp.txt')
-    # allstates = [eval(s) for s in allstates]
-
-    # st = np.array(allstates)
-    # str = np.round(st, 0)
-    
-    # final = np.median(str, axis = 0)
-    
-    # from scipy import stats
-    # final = stats.mode(str).mode[0, :]
-
-    # true = [12] * 40 + [87] * 60 + [60] * 55 + [33] * 45
-    
-
-    # plot_result(final, arr)
-    # print(model.prior.A)
-   

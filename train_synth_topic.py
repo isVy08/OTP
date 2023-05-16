@@ -4,6 +4,7 @@ import sys, time
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from topic_model import TopicModel
+from utils_model import load_topic_config
 from utils_io import load_model, write_pickle, load_pickle
 import numpy as np
 
@@ -21,7 +22,6 @@ def train_epoch(model, optimizer, scheduler,
     for idx in tqdm(train_loader):
       x = X[idx, :].to(device)
       xhat, z, zhat = model(x)   
-
       loss = bce(xhat, x)
 
       loss += weight * kl(nn.functional.log_softmax(zhat, dim=-1), z)
@@ -58,7 +58,6 @@ def generate_bartopics(n_topics):
     for kk in range(KK):
         b = np.zeros((KK, KK))
         b[kk, :] = np.ones(KK)
-        #b += 0.3 * np.random.rand(KK, KK)
         b /= b.sum()
         true_topics[kk, :] = b.reshape((1, vocab_size))
 
@@ -66,7 +65,6 @@ def generate_bartopics(n_topics):
     for kk in range(KK, n_topics):
         b = np.zeros((KK, KK))
         b[:, kk - KK] = np.ones(KK)
-        #b += 0.3 * np.random.rand(KK, KK)
         b /= b.sum()
         true_topics[kk, :] = b.reshape((1, vocab_size))
 
@@ -84,30 +82,11 @@ def generate_topics(true_beta, n_topics):
     return true_topics
 
 
-
-def generate_document(topics, doc_length, alpha=0.1):
-    """
-    generates a document given the topics and document length
-    """
-    n_topics, vocab_size = topics.shape
-    theta = np.random.mtrand.dirichlet([alpha] * n_topics)
-    v = np.zeros(doc_length, dtype=int)
-    for n in range(doc_length):
-        z = sample_index(theta)
-        w = sample_index(topics[z, :])
-        v[n] = w
-    return v
-
-
-
-
 if __name__ == "__main__":
     
     device_ids = [0,1,2,3]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu', device_ids[0])
     action = sys.argv[1]
-
-    from utils_model import load_topic_config
     config_index = int(sys.argv[2])
     config = load_topic_config(config_index)
 
@@ -127,13 +106,12 @@ if __name__ == "__main__":
     
     else:
       print('Generating synthetic data ...')
-            # vocabulary size
       
 
-      # topic-vocab distribution K x V
+      # topic-vocab distribution gamma: K x V
       true_topics = generate_bartopics(true_K)
       true_beta = None
-  
+
       n_group_j = [n_tokens] * n_groups
 
       # generating the corpus
@@ -153,8 +131,8 @@ if __name__ == "__main__":
     K, V = true_topics.shape
     KK = int(np.sqrt(V))
 
+
     from utils_model import one_hot_sequential_vectorizer
-    
     word2id = {i: i for i in range(V)}
 
     corpus = word_matrix.tolist()
@@ -169,7 +147,7 @@ if __name__ == "__main__":
     elif config_index == 1:
       H, D = 150, 50
     else:
-      H, D = 200, 50 
+      H, D = 150, 50 
     lr = 1e-3
     B = 50
     
@@ -184,8 +162,9 @@ if __name__ == "__main__":
     model.to(device)
     if action == "train":
       optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+      scheduler = None
       num_epochs = 300
-      weight = 1e-3
+      weight = 1e-4
 
 
       if os.path.isfile(model_path):
@@ -203,37 +182,34 @@ if __name__ == "__main__":
             print('Saving model ...')
             torch.save({'model_state_dict': model.module.state_dict() ,
                         'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
                         'prev_loss': prev_loss,
                         }, model_path)
             
-      
+
       end = time.time()
       print('========== TRAINING TIME ==========', end - start)
 
 
     elif action == 'eval': 
-      model_path = f'model/topic_synth{config_index}.pt'
       load_model(model, None, None, model_path, device)
-      beta = torch.softmax(model.forward_fn.beta, dim = -1)
-      beta = beta[0, :, :] # .cpu().detach().numpy()
+      gamma = torch.softmax(model.forward_fn.gamma, dim = -1)
+      gamma = gamma[0, :, :] # .cpu().detach().numpy()
       alpha = torch.softmax(model.prior.alpha, dim = -1)
       alpha = alpha[0, 0, :]
-      # print(beta)
+      
 
       print('Computing estimates ....')
       Q = torch.Tensor(true_topics).to(device)
       from utils_model import compute_topic_estimates
-      compute_topic_estimates(beta, Q)
-
+      compute_topic_estimates(gamma, Q)
+      print(gamma.mean(), Q.mean())
       print(alpha.mean())
 
-      print(alpha)
       from utils_model import visualize_topics, match_topics
-      
       print('Visualizing ...')
       truth = {k : sorted(np.where(true_topics[k, :])[0].tolist()) for k in range(K)}
-      estimated = match_topics(beta, truth)
+      estimated = match_topics(gamma, truth)
       topics = list(range(K))
       visualize_topics(topics, V, truth, estimated, f'topic{config_index}')
     
-   

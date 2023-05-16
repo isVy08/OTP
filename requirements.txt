@@ -1,0 +1,8 @@
+torch
+tqdm
+numpy
+scipy
+sklearn
+gensim
+octis
+matplotlib

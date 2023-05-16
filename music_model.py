@@ -7,8 +7,6 @@ class MusicBackward(nn.Module):
     def __init__(self, K, H, D, tau):
         super(MusicBackward, self).__init__()  
 
-      
-        # self.selector = nn.LSTM(D, K, H, batch_first=True)
         self.linear = nn.Sequential(
             nn.Linear(D, H),
             nn.ReLU(),
@@ -45,7 +43,6 @@ class MusicForward(nn.Module):
         '''
         logits = torch.matmul(z, self.logits)
         x = torch.sigmoid(logits) 
-        x = self.sampler(x)
         # [B, L, D] 
         return x
 

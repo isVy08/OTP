@@ -4,11 +4,9 @@ from utils_sampler import Sample_Categorical
 
 class PoissonBackward(nn.Module):
     
-    def __init__(self, D, K, L, tau):
+    def __init__(self, K, L, tau):
         super(PoissonBackward, self).__init__()  
 
-        
-        # self.selector = nn.RNN(1, K, L, batch_first=True)
         self.linear = nn.Sequential(
             nn.Linear(1, L),
             nn.ReLU(),
@@ -25,9 +23,6 @@ class PoissonBackward(nn.Module):
         '''
         [L, 1, 1]
         '''
-        
-        # h, _ = self.selector(x)
-        # h = h.squeeze(1)
         h = self.linear(x.squeeze(-1))
         z = self.sampler(h)
 
@@ -85,9 +80,9 @@ class PoissonPrior(nn.Module):
 
 
 class PoissonModel(nn.Module):
-    def __init__(self, D, K, L, tau, p, m, s):
+    def __init__(self, K, L, tau, p, m, s):
         super(PoissonModel, self).__init__() 
-        self.backward_fn = PoissonBackward(D, K, L, tau)
+        self.backward_fn = PoissonBackward(K, L, tau)
         self.forward_fn = PoissonForward(K, m, s)
         self.prior = PoissonPrior(K, p)
 
@@ -97,10 +92,3 @@ class PoissonModel(nn.Module):
         x = self.forward_fn(z)
         target = self.prior(logits)
         return x, logits, target
-
-
-# K = 4
-# m = PoissonModel(K, 3, 0.2, 0.95, 2)
-# x = torch.rand((70, 1, 1))
-# x, logits, target = m(x)
-

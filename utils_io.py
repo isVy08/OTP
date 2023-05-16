@@ -1,9 +1,5 @@
 import pickle
-import torch, os
-from tqdm import tqdm
-import torchvision.transforms as transforms
-import PIL
-import random
+import torch
 import numpy as np
 
 def load_txt(datadir):

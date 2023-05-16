@@ -2,7 +2,6 @@ import torch, os
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-import math
 import matplotlib.pyplot as plt
 from music_model import MusicModel, Criterion
 from utils_io import load_model, load_music_data
@@ -72,19 +71,15 @@ val_loader = torch.utils.data.DataLoader(val_indices, batch_size=batch_size, shu
 model.train()
 
 for epoch in range(num_epochs):
-train_loss = train_epoch(model, optimizer, scheduler, loss_fn, trainX, train_loader, device)
-val_loss = val_epoch(model, loss_fn, valX, val_loader, device)
+    train_loss = train_epoch(model, optimizer, scheduler, loss_fn, trainX, train_loader, device)
+    val_loss = val_epoch(model, loss_fn, valX, val_loader, device)
 
-if math.isnan(train_loss):
-    print('NaN values!')
-    break
-
-print(f"Epoch: {epoch} - Train Loss: {train_loss:.5f} / Val Loss: {val_loss:.5f}")
-if val_loss < prev_loss:
-    prev_loss = val_loss
-    print('Saving model ...')
-    torch.save({'model_state_dict': model.state_dict() ,
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
-                'prev_loss': prev_loss,
-                }, model_path)
+    print(f"Epoch: {epoch} - Train Loss: {train_loss:.5f} / Val Loss: {val_loss:.5f}")
+    if val_loss < prev_loss:
+        prev_loss = val_loss
+        print('Saving model ...')
+        torch.save({'model_state_dict': model.state_dict() ,
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
+                    'prev_loss': prev_loss,
+                    }, model_path)

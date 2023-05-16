@@ -1,8 +1,6 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-import random
-from utils_io import load_celeba, load_mnist
 from tqdm import tqdm
 
 def one_hot_sequential_vectorizer(corpus, word2id, L):
@@ -153,8 +151,12 @@ def compute_topic_estimates(true, estimated):
     klpm = kl(torch.log_softmax(estimated, dim = -1), M)
     klqm = kl(torch.log_softmax(true, dim = -1), M)
     js = 0.5 * (klpm + klqm)
+    # hellinger distance
+    _SQRT2 = np.sqrt(2)
+    hl = torch.sqrt(torch.sum((torch.sqrt(estimated) - torch.sqrt(true)) ** 2)) / _SQRT2
     print("L1:", l1.item())
     print("L2:", l2.item())
     print("KL:", kldiv.item())
     print("JS:", js.item())
+    print("HL:", hl.item())
 
