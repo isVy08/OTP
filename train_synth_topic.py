@@ -152,12 +152,8 @@ if __name__ == "__main__":
     print('Number of topics:', K)
 
 
-    if config_index == 0:
-      H, D = 50, 50
-    elif config_index == 1:
-      H, D = 150, 50
-    else:
-      H, D = 150, 50 
+    
+    H, D = 150, 50
     lr = 1e-3
     B = 50
     
