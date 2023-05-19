@@ -1,1 +1,1 @@
-# Optimal Transport for Learning Bayesian Networks
+# Optimal Transport for Learning Directed Graphical Models
