@@ -17,7 +17,8 @@ class TopicBackward(nn.Module):
         self.topic_layer = nn.Sequential(
             nn.Linear(D * H, H),
             nn.ReLU(),
-            nn.Linear(H, K)
+            nn.Linear(H, K),
+            nn.LogSoftmax(dim = -1)
         )
 
         self.sampler = Sample_Categorical(tau)
@@ -36,7 +37,7 @@ class TopicBackward(nn.Module):
         
        
         # [B, K]
-        return z
+        return z, logits
 
 class TopicForward(nn.Module):
     
@@ -70,14 +71,14 @@ class TopicPrior(nn.Module):
         batch_size  = x.size(0)
         if self.learnable:
             ones = torch.ones((batch_size, 1), device = x.device).float()
-            alpha = torch.square(self.alpha)
+            alpha = torch.exp(self.alpha)
             alpha_batch = torch.matmul(ones, alpha)
-            z = self.sampler(alpha_batch)
+            theta = self.sampler(alpha_batch)
         else:
-            z = self.sampler.sample((batch_size, ))
-            z = z.to(x.device)
+            theta = self.sampler.sample((batch_size, ))
+            theta = theta.to(x.device)
             
-        return z
+        return theta
 
 class TopicModel(nn.Module):
     def __init__(self, V, K, H, D, tau, learnable = True):
@@ -88,7 +89,7 @@ class TopicModel(nn.Module):
          
 
     def forward(self, x):
-        zhat = self.backward_fn(x)
+        zhat, logits = self.backward_fn(x)
         xhat = self.forward_fn(zhat)
-        z = self.prior(zhat)      
-        return xhat, z, zhat
+        theta = self.prior(zhat)      
+        return xhat, theta, logits

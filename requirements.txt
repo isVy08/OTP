@@ -6,3 +6,4 @@ sklearn
 gensim
 octis
 matplotlib
+POT

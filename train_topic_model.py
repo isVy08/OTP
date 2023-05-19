@@ -1,6 +1,7 @@
 import torch, os
 import torch.nn as nn
 import time
+import ot
 
 from tqdm import tqdm
 import gensim.corpora as corpora
@@ -27,7 +28,7 @@ def train_epoch(model, optimizer, scheduler,
     
     for idx in tqdm(train_loader):
       x = X[idx, :].to(device)
-      xhat, z, zhat = model(x)   
+      xhat, theta, logits = model(x)   
 
       if embedding_ts is not None:
         e = torch.repeat_interleave(embedding_ts, x.size(0), dim = 0)
@@ -37,7 +38,17 @@ def train_epoch(model, optimizer, scheduler,
       else: 
 
         loss = bce(xhat, x)
-      loss += weight * kl(nn.functional.log_softmax(zhat, dim=-1), z)
+      
+      B = theta.size(0)
+      a = torch.ones((B,), device = device) / B 
+      M = torch.zeros((B, B), device = device)
+      for i in range(B):
+        for j in range(B):
+          M[i, j] = kl(logits[i, :], theta[j])
+                 
+      ws  = ot.emd2(a, a, M)
+      loss += weight * ws
+
       model.module.backward_fn.lstm.flatten_parameters()
       
       optimizer.zero_grad()
@@ -72,7 +83,7 @@ def evaluate(model, corpus, K, print_output = False):
 
 if __name__ == "__main__":
     
-    device_ids = [1,2]
+    device_ids = [0,1,2,3]
     import sys 
     action = sys.argv[1]
     dataset_name = sys.argv[2] # '20NewsGroup', 'BBC_News', 'DBLP'

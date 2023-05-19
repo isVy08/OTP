@@ -38,14 +38,17 @@ class TopicBackward(nn.Module):
         logits = torch.mul(logits, ones)  
         z = self.sampler(logits)
 
+        
+       
         # [B, L, K]
-        return z
+        return z, logits
 
 class TopicForward(nn.Module):
     
     def __init__(self, V, K, tau):
         super(TopicForward, self).__init__()
         self.gamma = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, K, V)))
+        self.sampler = Sample_Categorical(tau)
 
     def forward(self, z):
         # [B, L, K]
@@ -57,8 +60,10 @@ class TopicForward(nn.Module):
         return x
 
 class TopicPrior(nn.Module):
-    def __init__(self, K):
+    def __init__(self, K, learnable = True):
         super(TopicPrior, self).__init__()
+        
+        self.learnable = learnable
         
         self.alpha = nn.Parameter(nn.init.xavier_normal_(torch.empty(1, 1, K)))
         self.sampler = Sample_Dirichlet()
@@ -70,23 +75,24 @@ class TopicPrior(nn.Module):
         ones = torch.ones((batch_size, L, 1), device = x.device).float()
         alpha = torch.softmax(self.alpha, dim = -1)
         alpha_batch = torch.matmul(ones, alpha)
-        z = self.sampler(alpha_batch)
+        theta = self.sampler(alpha_batch)
             
-        return z
+        return theta
 
 class TopicModel(nn.Module):
-    def __init__(self, L, V, K, H, D, tau):
+    def __init__(self, L, V, K, H, D, tau, learnable = True):
         super(TopicModel, self).__init__()
         self.backward_fn = TopicBackward(L, V, K, H, D, tau)
         self.forward_fn = TopicForward(V, K, tau)
-        self.prior = TopicPrior(K)
+        self.prior = TopicPrior(K, learnable)
          
 
     def forward(self, x):
         
-        zhat = self.backward_fn(x)
+        zhat, logits = self.backward_fn(x)
         
         xhat = self.forward_fn(zhat)
         
-        z = self.prior(zhat)      
-        return xhat, z, zhat
+        theta = self.prior(zhat) 
+        probs = torch.exp(logits) 
+        return xhat, theta, probs

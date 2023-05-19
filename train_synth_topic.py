@@ -1,6 +1,7 @@
 import torch, os
 import torch.nn as nn
 import sys, time
+import ot
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from topic_model import TopicModel
@@ -21,10 +22,19 @@ def train_epoch(model, optimizer, scheduler,
     
     for idx in tqdm(train_loader):
       x = X[idx, :].to(device)
-      xhat, z, zhat = model(x)   
+      xhat, theta, probs = model(x)   
       loss = bce(xhat, x)
+      z = torch.flatten(z, 0, 1)
+      zhat = torch.flatten(zhat, 0, 1)
 
-      loss += weight * kl(nn.functional.log_softmax(zhat, dim=-1), z)
+      B = z.size(0)
+      a = torch.ones((B,), device = device) / B 
+
+      M = ot.dist(probs, theta)      
+      ws  = ot.emd2(a, a, M) # euclidean cost matrix
+
+      loss += weight * ws
+
       model.module.backward_fn.lstm.flatten_parameters()
       
       optimizer.zero_grad()
