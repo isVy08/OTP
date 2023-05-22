@@ -1,0 +1,30 @@
+path_specific: "svhn_wqvae/"
+  
+dataset:
+  name: 'SVHN'
+  shape: (3, 32, 32)
+  dim_x: 3072 # 3 * 32 * 32
+
+model:
+  name: "OPT_VQAE"
+
+network:
+  name: "resnet"
+  num_rb: 2 
+
+train:
+  lr: 0.001
+  bs: 32
+  epoch_max: 100
+
+quantization:
+  name: 'OTP'
+  size_dict: 512
+  dim_dict: 64
+  partition: 64
+  beta: 1e-3
+  kl_regularization: 1.0
+  kan_iteration: 5
+  kan_lr: 1e-3
+  epsilon: 0.1
+  noise_weight: 1.0
