@@ -78,9 +78,10 @@ elif dataset_name == 'lda':
     model_output = model.train_model(dataset)
     topic_matrix = model_output['topic-word-matrix']
 
-    import torch
+    import torch, scipy
     from utils_model import compute_topic_estimates
-       
+    
+    topic_matrix = scipy.special.softmax(topic_matrix, axis = -1)   
     P = torch.Tensor(topic_matrix)
     Q = torch.Tensor(true_topics)    
     compute_topic_estimates(P, Q)
