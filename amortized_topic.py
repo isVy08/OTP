@@ -67,7 +67,7 @@ elif dataset_name == 'lda':
     corpus = [[str(item) for item in doc] for doc in corpus]
     vocab = [str(i) for i in range(V)]
 
-    dataset = Dataset(corpus = corpus, vocabulary = list(range(V)))
+    dataset = Dataset(corpus = corpus, vocabulary = vocab)
 
     if arch == 'neural':
         model = NeuralLDA(num_topics=K, num_epochs=300, use_partitions=False, batch_size=50, lr=1e-3)
