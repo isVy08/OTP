@@ -1,4 +1,4 @@
-import torch
+import torch, ot
 import torch.nn as nn
 from utils_sampler import Sample_Categorical, Sample_Bernoulli
 
@@ -91,6 +91,15 @@ class Criterion(nn.Module):
     def forward(self, x, output):
         x_tilde, logits, target = output # probs
         loss = self.bce(x_tilde, x)
-        loss += self.weight * self.kl(logits, target)
+        B = x.size(0)
+        a = torch.ones((B,), device = x.device) / B 
+        M = torch.zeros((B, B), device = x.device)
+        for i in range(B):
+            for j in range(B):
+                M[i, j] = self.kl(logits[i, :], target[j])
+        
+        ws  = ot.emd2(a, a, M)
+      
+        loss += self.weight * ws
         return loss
 
