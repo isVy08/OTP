@@ -1,4 +1,4 @@
-import torch, os
+import torch, os, ot
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
@@ -91,7 +91,13 @@ if action == 'train':
         X_tilde, logits, target = model(X)
 
         loss = nn.SmoothL1Loss()(X_tilde, X.squeeze())
-        loss += weight * kl(logits, target)
+        B = x.size(0)
+        a = torch.ones((B,), device = device) / B 
+        M = torch.zeros((B, B), device = device)
+        for i in range(B):
+            for j in range(B):
+              M[i, j] = kl(logits[i, :], target[j])
+        loss += weight * ot.emd2(a, a, M)
         
         optimizer.zero_grad()
         loss.backward()
