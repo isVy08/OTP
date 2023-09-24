@@ -24,10 +24,8 @@ def train_epoch(model, optimizer, scheduler,
       x = X[idx, :].to(device)
       xhat, theta, probs = model(x)   
       loss = bce(xhat, x)
-      z = torch.flatten(z, 0, 1)
-      zhat = torch.flatten(zhat, 0, 1)
 
-      B = z.size(0)
+      B = x.size(0)
       a = torch.ones((B,), device = device) / B 
 
       M = ot.dist(probs, theta)      
