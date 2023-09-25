@@ -197,8 +197,9 @@ if __name__ == "__main__":
 
     elif action == 'eval': 
       load_model(model, None, None, model_path, device)
-      gamma = torch.softmax(model.forward_fn.gamma, dim = -1)
-      gamma = gamma[0, :, :] # .cpu().detach().numpy()
+      # gamma = torch.softmax(model.forward_fn.gamma, dim = -1)
+      gamma = model.forward_fn.gamma
+      gamma = gamma[0, :, :]
       alpha = torch.softmax(model.prior.alpha, dim = -1)
       alpha = alpha[0, 0, :]
       
