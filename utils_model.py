@@ -136,7 +136,7 @@ def load_topic_config(config_index):
   }
   return config[config_index]
 
-def compute_topic_estimates(true, estimated):
+def compute_topic_estimates(estimated, true, ot_cost):
     '''
     true, estimate: torch.Tensor, K x V
     '''
@@ -144,19 +144,43 @@ def compute_topic_estimates(true, estimated):
     L1 = torch.nn.L1Loss()
     L2 = torch.nn.MSELoss()
 
-    l1 = L1(estimated, true)
-    l2 = L2(estimated, true)
-    kldiv = kl(torch.log_softmax(estimated, dim = -1), true)
-    M = 0.5 * (true + estimated)
-    klpm = kl(torch.log_softmax(estimated, dim = -1), M)
-    klqm = kl(torch.log_softmax(true, dim = -1), M)
+    
+    prob_estimated = torch.softmax(estimated, dim = -1)
+    l1 = L1(prob_estimated, true)
+    l2 = L2(prob_estimated, true)
+    
+    log_estimated = torch.log_softmax(estimated, dim = -1)
+    B = estimated.shape[0]
+    unif = torch.ones((B,)) / B
+    M = torch.zeros((B, B))
+    if ot_cost == 'kl':
+        
+        
+        for i in range(B):
+            for j in range(B):
+                M[i, j] = kl(log_estimated[i, :], true[j, :])
+    else:
+        M = ot.dist(prob_estimated, true)
+
+    ws = ot.emd2(unif, unif, M)
+    
+    
+    kldiv = kl(log_estimated, true)
+    denom = 0.5 * (true + prob_estimated)
+    klpm = kl(log_estimated, denom)
+
+    log_true = torch.log_softmax(true, dim=-1)
+    klqm = kl(log_true, denom)
     js = 0.5 * (klpm + klqm)
+    
+
     # hellinger distance
     _SQRT2 = np.sqrt(2)
-    hl = torch.sqrt(torch.sum((torch.sqrt(estimated) - torch.sqrt(true)) ** 2)) / _SQRT2
+    hl = torch.sqrt(torch.sum((torch.sqrt(prob_estimated) - torch.sqrt(true)) ** 2)) / _SQRT2
     print("L1:", l1.item())
     print("L2:", l2.item())
     print("KL:", kldiv.item())
     print("JS:", js.item())
     print("HL:", hl.item())
+    print("WS:", ws.item())
 
