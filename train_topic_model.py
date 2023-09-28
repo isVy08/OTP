@@ -124,7 +124,7 @@ if __name__ == "__main__":
     model.to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = None # torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.98)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.98)
     num_epochs = 1000
     weight = 0.1
 
@@ -148,7 +148,7 @@ if __name__ == "__main__":
             print('Saving model ...')
             torch.save({'model_state_dict': model.module.state_dict() ,
                         'optimizer_state_dict': optimizer.state_dict(),
-                        # 'scheduler_state_dict': scheduler.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict(),
                         'prev_loss': prev_loss,
                         }, model_path)
 
