@@ -76,7 +76,7 @@ true_rates = sorted(true_rates)
 print(true_rates, true_p)
 
 K, tau = 4, 0.1
-m, s = 4, 1
+m, s = 4, 2
 D = 64
 L = X.shape[1]
 

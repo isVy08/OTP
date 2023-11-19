@@ -58,7 +58,7 @@ X = torch.from_numpy(arr).unsqueeze(-1).float()
 
 # [12, 87, 60, 33]
 K, tau = 4, 0.1
-m, s = 4, 1
+m, s = 4, 2
 L = 64
 lr = 1e-3
 p = 0.95
