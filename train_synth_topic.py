@@ -37,7 +37,7 @@ def compute_loss(x, xhat, z, zhat, eta, metric):
         l = torch.log(z + 1e-8)
         for i in range(B):
           for j in range(B):
-            M[i, j] = kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :])
+            M[i, j] = 0.5 * (kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :]))
         dist = ot.emd2(a, a, M)
 
       if eta is None:
