@@ -31,15 +31,10 @@ def compute_loss(x, xhat, z, zhat, eta, metric, loss_fn):
         B = x.size(0)
         a = torch.ones((B,), device = x.device) / B 
         if len(z.shape) == 2: 
-          M = kl_matrix(z, zhat)
+          M = kl_matrix(zhat, z)
         else:
           M = torch.zeros((B, B), device = x.device)
-          kl = nn.KLDivLoss(reduction="batchmean")
-          lhat = torch.log(zhat + 1e-8)
-          l = torch.log(z + 1e-8)
-          for i in range(B):
-            for j in range(B):
-              M[i, j] = 0.5 * (kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :]))
+          M = kl_matrix(zhat.flatten(1,2), z.flatten(1,2))
         
         dist = ot.emd2(a, a, M)
 
@@ -137,7 +132,6 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     action = sys.argv[1]
     config_index = int(sys.argv[2])
-    ver = sys.argv[3]
     config = load_topic_config(config_index)
 
     '''
@@ -235,11 +229,13 @@ if __name__ == "__main__":
 
 
     elif action == 'eval': 
+      print(model_path)
       load_model(model, None, None, model_path, device)
+      # gamma = torch.softmax(model.forward_fn.gamma, dim = -1)
       gamma = model.forward_fn.gamma
-      gamma = gamma[0, :, :]
+      gamma = gamma[0, :] # .cpu().detach().numpy()
       alpha = torch.softmax(model.prior.alpha, dim = -1)
-      alpha = alpha[0, 0, :]
+      alpha = alpha[0, :]
       
 
       print('Computing estimates ....')
@@ -251,9 +247,12 @@ if __name__ == "__main__":
       print(alpha.mean())
 
       from utils_model import visualize_topics, match_topics
+      
       print('Visualizing ...')
       truth = {k : sorted(np.where(true_topics[k, :])[0].tolist()) for k in range(K)}
       estimated = match_topics(gamma, truth)
+      
       topics = list(range(K))
       visualize_topics(topics, V, truth, estimated, f'topic{config_index}')
     
+   
