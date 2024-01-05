@@ -3,15 +3,14 @@ import torch.nn as nn
 import sys, time, ot
 import numpy as np
 from torch.utils.data import DataLoader
-from utils_model import load_topic_config, free_params, frozen_params
+from utils_model import load_topic_config, free_params, frozen_params, kl_matrix
 from amortized_model import TopicModel, TopicBackward
 from utils_io import load_model, write_pickle, load_pickle
 from geomloss import SamplesLoss
 
-def compute_loss(x, xhat, z, zhat, eta, metric):
+def compute_loss(x, xhat, z, zhat, eta, metric, loss_fn):
       
-      bce = nn.BCELoss()
-      recons = bce(xhat, x)
+      recons = loss_fn(xhat, x)
 
       if len(z.shape) == 3:
         z = z.flatten(1,2)
@@ -20,7 +19,7 @@ def compute_loss(x, xhat, z, zhat, eta, metric):
 
       if metric == 'l2': 
         B = x.size(0)
-        a = torch.ones((B,), device = device) / B 
+        a = torch.ones((B,), device = x.device) / B 
         M = ot.dist(zhat, z)
         dist = ot.emd2(a, a, M)
       
@@ -30,14 +29,18 @@ def compute_loss(x, xhat, z, zhat, eta, metric):
       
       elif metric == 'kl':
         B = x.size(0)
-        a = torch.ones((B,), device = device) / B 
-        M = torch.zeros((B, B), device = device)
-        kl = nn.KLDivLoss(reduction="batchmean")
-        lhat = torch.log(zhat + 1e-8)
-        l = torch.log(z + 1e-8)
-        for i in range(B):
-          for j in range(B):
-            M[i, j] = 0.5 * (kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :]))
+        a = torch.ones((B,), device = x.device) / B 
+        if len(z.shape) == 2: 
+          M = kl_matrix(z, zhat)
+        else:
+          M = torch.zeros((B, B), device = x.device)
+          kl = nn.KLDivLoss(reduction="batchmean")
+          lhat = torch.log(zhat + 1e-8)
+          l = torch.log(z + 1e-8)
+          for i in range(B):
+            for j in range(B):
+              M[i, j] = 0.5 * (kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :]))
+        
         dist = ot.emd2(a, a, M)
 
       if eta is None:
@@ -48,7 +51,8 @@ def compute_loss(x, xhat, z, zhat, eta, metric):
          return recons + eta * dist
         
             
-def train_epoch(model, phi, fopt, bopt, X, train_loader, device):
+def train_epoch(model, phi, fopt, bopt, X, train_loader, weight, device, 
+                ground_cost, loss_fn):
     
     
     Loss = 0
@@ -61,7 +65,7 @@ def train_epoch(model, phi, fopt, bopt, X, train_loader, device):
       frozen_params(model)
       zhat, _ = phi(x)
       xhat, z = model(zhat)   
-      loss = compute_loss(x, xhat, z, zhat, eta=1e-4, metric='sk')
+      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn)
       phi.lstm.flatten_parameters()
       
       bopt.zero_grad()
@@ -72,7 +76,7 @@ def train_epoch(model, phi, fopt, bopt, X, train_loader, device):
       free_params(model)
       zhat, _ = phi(x)
       xhat, z = model(zhat)   
-      loss = compute_loss(x, xhat, z, zhat, eta=1e-4, metric='sk')
+      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn)
       
       fopt.zero_grad()
       loss.backward()
@@ -133,6 +137,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     action = sys.argv[1]
     config_index = int(sys.argv[2])
+    ver = sys.argv[3]
     config = load_topic_config(config_index)
 
     '''
@@ -193,7 +198,7 @@ if __name__ == "__main__":
     B = 50
     
     tau = 0.20
-    model_path = f'model/topic_synth_{config_index}.pt'
+    model_path = f'model/topic_synth_{config_index}{ver}.pt'
     
     train_indices = list(range(X.size(0)))
     train_loader = DataLoader(train_indices, batch_size=B, shuffle=True)
@@ -211,12 +216,15 @@ if __name__ == "__main__":
       fopt = torch.optim.Adam(model.parameters(), lr=lr)
       bopt = torch.optim.Adam(phi.parameters(), lr=lr)
       num_epochs = 300
+      weight = 1e-4
       model.train()
       phi.train()
 
       start = time.time()      
       for epoch in range(num_epochs + 1):
-          loss = train_epoch(model, phi, fopt, bopt, X, train_loader, device)
+          loss = train_epoch(model, phi, fopt, bopt, X, train_loader, weight, 
+                             device, 'kl',nn.BCELoss())
+          
           print(f"Epoch: {epoch} - Loss: {loss:.5f}")
           torch.save({'model_state_dict': model.state_dict() ,
                       'optimizer_state_dict': fopt.state_dict(),

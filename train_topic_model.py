@@ -1,67 +1,15 @@
-import torch, os
+import torch
+import time, ot
 import torch.nn as nn
-import time
-import ot
-
-from tqdm import tqdm
 import gensim.corpora as corpora
 from octis.dataset.dataset import Dataset
 from torch.utils.data import DataLoader
 from utils_io import load_model
+from train_synth_topic import train_epoch
 
 from octis.evaluation_metrics.diversity_metrics import TopicDiversity
 from octis.evaluation_metrics.coherence_metrics import Coherence
-from geomloss import SamplesLoss
 
-
-
-def train_epoch(model, optimizer, scheduler,
-                X, train_loader, weight, device, ground_cost):
-    
-    model.train()
-    bce = nn.BCELoss()
-    l2 = nn.MSELoss()
-    kl = nn.KLDivLoss(reduction="batchmean")
-    sk = SamplesLoss("sinkhorn", p=2, blur=0.01, scaling=.9, backend="tensorized")
-
-    Loss = 0
-    
-    for idx in train_loader:
-      x = X[idx, :].to(device)
-      xhat, theta, logits = model(x)   
-      loss = bce(xhat, x) + l2(xhat, x)
-
-      B = x.size(0)
-      a = torch.ones((B,), device = device) / B 
-
-      if ground_cost == 'kl':
-        M = torch.zeros((B, B), device = device)
-        for i in range(B):
-          for j in range(B):
-            M[i, j] = kl(logits[i, :], theta[j, :])
-        ws  = ot.emd2(a, a, M)
-      elif ground_cost == 'sk':
-        probs = torch.exp(logits)    
-        ws = sk(probs, theta)
-        
-      else:
-        probs = torch.exp(logits)    
-        M = ot.dist(probs, theta)
-        ws  = ot.emd2(a, a, M)
-
-      loss += weight * ws
-
-      model.module.backward_fn.lstm.flatten_parameters()
-      
-      optimizer.zero_grad()
-      loss.backward()
-      optimizer.step()
-      if scheduler:
-        scheduler.step()
-      
-      Loss += loss.item()
-   
-    return Loss / len(train_loader)
 
 def evaluate(model, corpus, K, print_output = False):
     topic_matrix = torch.exp(model.forward_fn.beta)
@@ -85,12 +33,12 @@ def evaluate(model, corpus, K, print_output = False):
 
 if __name__ == "__main__":
     
-    device_ids = [2,3,1]
     import sys 
     action = sys.argv[1]
     dataset_name = sys.argv[2] # '20NewsGroup', 'BBC_News', 'DBLP'
+    ver = sys.argv[3]
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu', device_ids[0])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     dataset = Dataset()
     dataset.fetch_dataset(dataset_name)
@@ -113,50 +61,49 @@ if __name__ == "__main__":
     B = 50
     D = 50
     tau = 2.0
-    ver = sys.argv[3]
+    
     model_path = f'model/topic_{dataset_name}_{ver}.pt'
     
     train_indices = list(range(X.size(0)))
     train_loader = DataLoader(train_indices, batch_size=B, shuffle=True)
 
-    from topic_model import TopicModel
-    model = TopicModel(V, K, H, D, tau, True)
+    from topic_model import TopicModel, TopicBackward
+
+    phi = TopicBackward(V, K, H, D, tau)
+    model = TopicModel(V, K, tau, True)
+    phi.to(device)
     model.to(device)
-    
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.98)
-    num_epochs = 1000
-    weight = 0.1
-
-    if os.path.isfile(model_path):
-        prev_loss = load_model(model, optimizer, scheduler, model_path, device)
-    else:
-        prev_loss = 1.0
-
-    if action == 'train':
-      model = nn.DataParallel(model, device_ids)
-      start = time.time()
         
-      ground_cost = 'kl' if dataset != 'DBLP' else 'l2' # to speed up training on large data like DBLP
+    if action == 'train':
+      fopt = torch.optim.Adam(model.parameters(), lr=lr)
+      bopt = torch.optim.Adam(phi.parameters(), lr=lr)
+      num_epochs = 1000
+      weight = 0.1
+      model.train()
+      phi.train()
+      
+      start = time.time()
+
+      grc = 'kl' # 'l2' if dataset_name == 'DBLP' else 'kl'
       
       for epoch in range(num_epochs):
-          loss = train_epoch(model, optimizer, scheduler, X, train_loader, 
-                             weight, device, ground_cost)
+          
+          loss = train_epoch(model, phi, fopt, bopt, X, train_loader, weight, 
+                             device, grc, torch.nn.BCELoss())
           print(f"Epoch: {epoch} - Loss: {loss:.5f}")
-          if loss < prev_loss:
-            prev_loss = loss
-            print('Saving model ...')
-            torch.save({'model_state_dict': model.module.state_dict() ,
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'scheduler_state_dict': scheduler.state_dict(),
-                        'prev_loss': prev_loss,
-                        }, model_path)
+          torch.save({'model_state_dict': model.state_dict() ,
+                      'optimizer_state_dict': fopt.state_dict(),
+                      'prev_loss': loss,
+                      }, model_path)
 
       end = time.time()
       print('========== TRAINING TIME ==========', end - start)
       
   
     else:
+      
+      load_model(model, None, None, model_path, device)
       model.eval()
       evaluate(model, corpus, K, True)
                 
+        
