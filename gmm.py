@@ -19,16 +19,22 @@ class GMMBackward(nn.Module):
         self.sampler = Sample_Categorical(tau)
 
    
-    def forward(self, x):
+    def forward(self, x, sample_size=1):
         # [B, D]
         
         logits = self.output_layer(x)
-        probs = torch.exp(logits)
+        # z = torch.exp(logits)
 
-        z = self.sampler(logits)
-        
+        if sample_size == 1: 
+            z = self.sampler(logits)
+        else:
+            z = 0
+            for _ in range(sample_size):
+                z += self.sampler(logits)
+            
+            z = z / sample_size
         # [B, K]
-        return z, probs
+        return z, logits
 
 
 class GMMForward(nn.Module):
@@ -51,13 +57,22 @@ class GMMPrior(nn.Module):
         
         self.logits = nn.Parameter(nn.init.ones_(torch.empty(1, K)))
     
-    def forward(self, batch_size):
+    def forward(self, batch_size, sample_size=1):
         ones = torch.ones((batch_size, 1), device = self.logits.device).float()
         logits = torch.log_softmax(self.logits, dim = -1)
         logits_batch = torch.matmul(ones, logits)
-        z = self.sampler(logits_batch)
+        # z = self.sampler(logits_batch)
+
+        if sample_size == 1: 
+            z = self.sampler(logits_batch)
+        else:
+            z = 0
+            for _ in range(100):
+                z += self.sampler(logits_batch)
+            
+            z = z / 100
         
-        return z
+        return z, logits_batch
 
 class GMM(nn.Module):
     def __init__(self, D, K, tau, a=0, b=1):
