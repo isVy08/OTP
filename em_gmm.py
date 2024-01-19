@@ -161,11 +161,3 @@ GMM = GMM(X, 2, 1000)
 GMM.run()
 output = (GMM.mus, GMM.pis)
 write_pickle(output, f'{root}/em{no}.pkl')
-
-# correct = 0
-# for i in range(X.shape[0]):
-#     pred = GMM.predict(X[i, :])
-#     pred = np.argmax(pred)
-#     if pred == int(labels[i]): 
-#         correct += 1 
-# print('Accuracy:', correct / X.shape[0])
