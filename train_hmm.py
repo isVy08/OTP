@@ -1,21 +1,43 @@
 import torch, os
-import numpy as np
 import torch.nn as nn
-import sys, random, ot
+import random, ot
+from tqdm import tqdm
+import numpy as np
 from scipy import stats
-from hmm import PoissonModel
-from geomloss import SamplesLoss
+import matplotlib.pyplot as plt
+from hmm import PoissonModel, PoissonBackward
 from torch.utils.data import DataLoader
 from utils_io import load_model, write_pickle, load_pickle
+from utils_model import free_params, frozen_params
 
+from geomloss import SamplesLoss
 
+import sys
 action = sys.argv[1]
+ver = sys.argv[2]
+batch = sys.argv[3]
 
-torch.manual_seed(8)
+
+def plot_result(predicted, source, path, title = None):
+    fig = plt.figure(figsize=(10, 4))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.plot(predicted, 'o', c='tab:green', lw=1, alpha = 0.8, label='inferred rate')
+    ax.plot(source, c='black', alpha=0.3, label='observed counts')
+    ax.set_ylabel("latent rate")
+    ax.set_xlabel("time")
+    if title:
+        ax.set_title(f"Inferred latent rate over time: {title}")
+    else:
+        ax.set_title("Inferred latent rate over time")
+    ax.legend(loc=4)
+    plt.show()
+    # plt.savefig('segment.pdf')
+    plt.savefig(path)
+
 
 
 # Generating data 
-data_path = f'data/hmm.pkl'
+data_path = f'data/V{ver}.pkl'
 force = False
 if os.path.isfile(data_path) and not force:
     print('Loading data ...')
@@ -69,12 +91,19 @@ else:
     observed_counts = np.stack(observed_counts, axis=1)
     true_p = p
     write_pickle((observed_counts, true_rates, true_p), data_path)
+    # np.save(data_path, observed_counts)
+
+    # plt.figure()
+    # for i in range(30):
+    #     plt.plot(observed_counts[i])
+    #     plt.savefig(f'hypertrue.png')
 
 
 X = torch.from_numpy(observed_counts).unsqueeze(-1).float()
 true_rates = sorted(true_rates)
 print(true_rates, true_p)
 
+# [12, 87, 60, 33]
 K, tau = 4, 0.1
 m, s = 4, 2
 D = 64
@@ -82,106 +111,149 @@ L = X.shape[1]
 
 weight = 0.01
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model_path = f'cp/hmm.pt'
+model_path = f'model_{batch}/hmm_v{ver}.pt'
 
-model = PoissonModel(D, L, K, tau, m, s, device)
+phi = PoissonBackward(D, L, K, tau)
+model = PoissonModel(K, tau, m, s, device)
 
 lr = 0.005
 num_epochs = 50
-
-
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
-
-
-if os.path.isfile(model_path):
-    prev_loss = load_model(model, optimizer, None, model_path, device)
-else:
-    prev_loss = 10.
+fopt = torch.optim.Adam(model.parameters(), lr=lr)
+bopt = torch.optim.Adam(phi.parameters(), lr=lr)
 
 train_indices = list(range(X.size(0)))
 train_loader = DataLoader(train_indices, batch_size=500, shuffle=True)
 
+
+if os.path.isfile(model_path):
+    prev_loss = load_model(model, fopt, None, model_path, device)
+else:
+    prev_loss = 20.
+
+def compute_loss(x, xhat, z, zhat, eta, metric):
+      
+      recons = nn.SmoothL1Loss()(xhat, x)
+
+      if len(z.shape) == 3:
+        z = z.flatten(1,2)
+        zhat = zhat.flatten(1,2)
+
+
+      if metric == 'l2': 
+        B = x.size(0)
+        a = torch.ones((B,), device = device) / B 
+        M = ot.dist(zhat, z)
+        dist = ot.emd2(a, a, M)
+      
+      elif metric == 'sk':
+        sk = SamplesLoss("sinkhorn", p=2, blur=0.01, scaling=0.9, backend="tensorized")
+        dist = sk(zhat, z)
+      
+      elif metric == 'kl':
+        B = x.size(0)
+        a = torch.ones((B,), device = device) / B 
+        M = torch.zeros((B, B), device = device)
+        kl = nn.KLDivLoss(reduction="batchmean")
+        lhat = torch.log(zhat + 1e-8)
+        l = torch.log(z + 1e-8)
+        for i in range(B):
+          for j in range(B):
+            M[i, j] = 0.5 * (kl(lhat[i, :], z[j, :]) + kl(l[i, :], zhat[j, :]))
+        dist = ot.emd2(a, a, M)
+
+      if eta is None:
+          return recons 
+      elif eta < 0:
+          return dist 
+      else: 
+         return recons + eta * dist
+
+
+
+
 X = X.to(device)
-kl = nn.KLDivLoss(reduction="batchmean")
-sk = SamplesLoss("sinkhorn", p=2, blur=0.01, scaling=0.9, backend="tensorized")
-ground_cost = 'euclidean'
 
 if action == 'train':
+    # model = nn.DataParallel(model, device_ids)
     model.to(device)
+    phi.to(device)
     print('Training begins ...')
     model.train()
+    phi.train()
     for epoch in range(num_epochs):
-        print('Epoch:', epoch)
         
-        losses = 0
+        Loss = 0
         for idx in train_loader:
             x = X[idx, ]
-            x_tilde, logits, theta = model(x)
- 
-            loss = nn.SmoothL1Loss()(x_tilde, x.squeeze(-1))
-            probs = torch.exp(logits)
-
-            if ground_cost == 'kl':
-                B = probs.size(0)
-                a = torch.ones((B,), device = device) / B 
-                M = torch.zeros((B, B), device = device)
-                for i in range(B):
-                    for j in range(B):                        
-                        M[i, j] = kl(logits[i, :], theta[j, :]) 
-            
-
-                dist  = ot.emd2(a, a, M)
-            elif ground_cost == 'sk':
-                dist = sk(probs, theta).mean()
-            else:
-                B = probs.size(0)
-                a = torch.ones((B,), device = device) / B 
+        
+            free_params(phi)
+            frozen_params(model)
+            zhat, _ = phi(x)
+            xhat, z = model(zhat)   
+            loss = compute_loss(x.squeeze(-1), xhat, z, zhat, eta=0.01, metric='l2')
                 
-                probs = probs.flatten(1,2)
-                theta = theta.flatten(1,2)
-                M = ot.dist(probs, theta)
-                dist  = ot.emd2(a, a, M)
-            
-            
-            total_loss = loss + weight * dist
-            losses += loss 
+            bopt.zero_grad()
+            loss.backward()
+            bopt.step()
 
-            optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
+            frozen_params(phi)
+            free_params(model)
+            zhat, _ = phi(x)
+            xhat, z = model(zhat)   
+            loss = compute_loss(x.squeeze(-1), xhat, z, zhat, eta=0.01, metric='l2')
             
+            fopt.zero_grad()
+            loss.backward()
+            fopt.step()
+
+            Loss += loss.item()
         
-        
-        losses /= len(train_loader)
+        Loss /= len(train_loader)
+    
+        if epoch % 10 == 0 or Loss < prev_loss:
+            p = model.prior.get_transition_matrix()
+            rates = torch.exp(model.forward_fn.rate)
+            a = rates[:, 0].detach().cpu().round().tolist()
+            a = sorted(a)
+            print('Epoch:', epoch)
+            print('True rate:', true_rates)
+            print('Rate:', a)
+            print('Loss:', Loss)
+            print(p.detach().cpu())
+            print('========================================================')
 
-
-        if losses < prev_loss: 
-            prev_loss = losses
+        if Loss < prev_loss: 
+            prev_loss = Loss
             print('Saving model ...')
-            torch.save({'model_state_dict': model.state_dict() ,
-                        'optimizer_state_dict': optimizer.state_dict(),
+            ckpt = {'model_state_dict': model.state_dict() ,
+                        'optimizer_state_dict': fopt.state_dict(),
                         'prev_loss': prev_loss,
-                        }, model_path)
+                        }
+            torch.save(ckpt, model_path)
         
 else:
-    print('Evaluation begins ...')
-    
+    if os.path.isfile(model_path):
+        print('Evaluation begins ...')
 
-    model.to(device)
-    model.eval()
-    load_model(model, None, None, model_path, device)
-    X_tilde, logits, target = model(X)
-    loss = nn.SmoothL1Loss()(X_tilde, X.squeeze())
-    print('Reconstruction loss:', loss)
-    rate = torch.exp(model.forward_fn.rate)
-    
-    rate = rate[:, 0].detach().cpu().tolist()
-    rate = sorted(rate)
-    print('True rate:', true_rates)
-    print('Est. rate:', rate)
-    p = model.prior.get_transition_matrix()
-    print('True Trans Prob:', true_p)
-    print('Est. Trans Prob:', p[0,0].item())
+        model.to(device)
+        model.eval()
+        load_model(model, None, None, model_path, device)
+        # X_tilde, logits, target = model(X)
+        # loss = nn.SmoothL1Loss()(X_tilde, X.squeeze())
+        # print('Reconstruction loss:', loss)
+        rate = torch.exp(model.forward_fn.rate)
+        
+        rate = rate[:, 0].detach().cpu().tolist()
+        rate = sorted(rate)
+        print(rate)
+        p = model.prior.get_transition_matrix()
+        p = p[0,0].item()
+        print(p)
+        file = open(f'hmm_result_{batch}.txt', 'a+')
+        file.write(f"V{ver};{str(true_rates)};{str(rate)};{true_p};{p}\n")
+        file.close()
+        
+        
