@@ -36,7 +36,6 @@ if __name__ == "__main__":
     import sys 
     action = sys.argv[1]
     dataset_name = sys.argv[2] # '20NewsGroup', 'BBC_News', 'DBLP'
-    ver = sys.argv[3]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -62,7 +61,7 @@ if __name__ == "__main__":
     D = 50
     tau = 2.0
     
-    model_path = f'model/topic_{dataset_name}_{ver}.pt'
+    model_path = f'model/topic_{dataset_name}.pt'
     
     train_indices = list(range(X.size(0)))
     train_loader = DataLoader(train_indices, batch_size=B, shuffle=True)
@@ -81,20 +80,24 @@ if __name__ == "__main__":
       weight = 0.1
       model.train()
       phi.train()
+      prev_loss = 1
       
       start = time.time()
 
-      grc = 'kl' # 'l2' if dataset_name == 'DBLP' else 'kl'
+      grc = 'kl'
       
       for epoch in range(num_epochs):
           
           loss = train_epoch(model, phi, fopt, bopt, X, train_loader, weight, 
                              device, grc, torch.nn.BCELoss())
           print(f"Epoch: {epoch} - Loss: {loss:.5f}")
-          torch.save({'model_state_dict': model.state_dict() ,
-                      'optimizer_state_dict': fopt.state_dict(),
-                      'prev_loss': loss,
-                      }, model_path)
+          if loss < prev_loss:
+            print('Saving model ...')
+            torch.save({'model_state_dict': model.state_dict() ,
+                        'optimizer_state_dict': fopt.state_dict(),
+                        'prev_loss': loss,
+                        }, model_path)
+            prev_loss = loss
 
       end = time.time()
       print('========== TRAINING TIME ==========', end - start)
@@ -107,3 +110,11 @@ if __name__ == "__main__":
       evaluate(model, corpus, K, True)
                 
         
+        
+
+    
+      
+
+          
+
+

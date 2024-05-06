@@ -24,23 +24,20 @@ class GMMBackward(nn.Module):
         # [B, D]
         
         logits = self.output_layer(x)
-        # z = torch.exp(logits)
 
         if sample_size == 1: 
             z = self.sampler(logits)
         else:
-            z = 0
-            for _ in range(sample_size):
-                z += self.sampler(logits)
-            
-            z = z / sample_size
+            logits_ = torch.repeat_interleave(logits.unsqueeze(0), repeats=sample_size, dim=0)
+            z = self.sampler(logits_)
+            z = z.mean(dim=0)
         # [B, K]
         return z, logits
 
 
 class GMMForward(nn.Module):
     
-    def __init__(self, K, D, a, b, var=None):
+    def __init__(self, K, D, a, b, var):
         super(GMMForward, self).__init__()
         self.mu = nn.Parameter(nn.init.uniform_(torch.empty(K, D), a=a, b=b))
         
@@ -49,9 +46,10 @@ class GMMForward(nn.Module):
     def forward(self, z):
         # [B, K]
         x = z @ self.mu
-        if self.var is not None:
-            eps = torch.randn_like(x)
-            var = x + eps * (z @ self.var)
+        z = torch.argmax(z, dim=1)
+        z = nn.functional.one_hot(z).float()
+        eps = torch.randn_like(x)
+        x = x + eps * (z @ self.var)
         # [B, D]
         return x
 
@@ -73,15 +71,15 @@ class GMMPrior(nn.Module):
         ones = torch.ones((batch_size, 1), device = self.logits.device).float()
         logits = torch.log_softmax(self.logits, dim = -1)
         logits_batch = torch.matmul(ones, logits)
+        
 
         if sample_size == 1: 
+            
             z = self.sampler(logits_batch)
         else:
-            z = 0
-            for _ in range(100):
-                z += self.sampler(logits_batch)
-            
-            z = z / 100
+            logits_ = torch.repeat_interleave(logits_batch.unsqueeze(0), repeats=sample_size, dim=0)
+            z = self.sampler(logits_)
+            z = z.mean(dim=0)
         
         return z, logits_batch
 

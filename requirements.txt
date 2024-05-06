@@ -7,3 +7,4 @@ gensim
 octis
 matplotlib
 POT
+geomloss

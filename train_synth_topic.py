@@ -1,14 +1,14 @@
 import torch, os
 import torch.nn as nn
-import sys, time, ot
 import numpy as np
-from torch.utils.data import DataLoader
-from utils_model import load_topic_config, free_params, frozen_params, kl_matrix
-from amortized_model import TopicModel, TopicBackward
-from utils_io import load_model, write_pickle, load_pickle
+import sys, time, ot
 from geomloss import SamplesLoss
+from torch.utils.data import DataLoader
+from topic_model import TopicModel, TopicBackward
+from utils_io import load_model, write_pickle, load_pickle
+from utils_model import load_topic_config, free_params, frozen_params, kl_matrix
 
-def compute_loss(x, xhat, z, zhat, eta, metric, loss_fn):
+def compute_loss(x, xhat, z, zhat, eta, metric, loss_fn, logz=None, logzhat=None):
       
       recons = loss_fn(xhat, x)
 
@@ -31,7 +31,7 @@ def compute_loss(x, xhat, z, zhat, eta, metric, loss_fn):
         B = x.size(0)
         a = torch.ones((B,), device = x.device) / B 
         if len(z.shape) == 2: 
-          M = kl_matrix(zhat, z)
+          M = kl_matrix(zhat, z, logzhat, logz)
         else:
           M = torch.zeros((B, B), device = x.device)
           M = kl_matrix(zhat.flatten(1,2), z.flatten(1,2))
@@ -58,9 +58,9 @@ def train_epoch(model, phi, fopt, bopt, X, train_loader, weight, device,
 
       free_params(phi)
       frozen_params(model)
-      zhat, _ = phi(x)
+      zhat, logzhat = phi(x)
       xhat, z = model(zhat)   
-      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn)
+      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn, None, logzhat=logzhat)
       phi.lstm.flatten_parameters()
       
       bopt.zero_grad()
@@ -69,9 +69,9 @@ def train_epoch(model, phi, fopt, bopt, X, train_loader, weight, device,
 
       frozen_params(phi)
       free_params(model)
-      zhat, _ = phi(x)
+      zhat, logzhat = phi(x)
       xhat, z = model(zhat)   
-      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn)
+      loss = compute_loss(x, xhat, z, zhat, weight, ground_cost, loss_fn, None, logzhat=logzhat)
       
       fopt.zero_grad()
       loss.backward()
@@ -150,7 +150,6 @@ if __name__ == "__main__":
     
     else:
       print('Generating synthetic data ...')
-      
 
       # topic-vocab distribution gamma: K x V
       true_topics = generate_bartopics(true_K)
@@ -192,7 +191,7 @@ if __name__ == "__main__":
     B = 50
     
     tau = 0.20
-    model_path = f'model/topic_synth_{config_index}{ver}.pt'
+    model_path = f'model/topic_synth_{config_index}.pt'
     
     train_indices = list(range(X.size(0)))
     train_loader = DataLoader(train_indices, batch_size=B, shuffle=True)
@@ -231,7 +230,6 @@ if __name__ == "__main__":
     elif action == 'eval': 
       print(model_path)
       load_model(model, None, None, model_path, device)
-      # gamma = torch.softmax(model.forward_fn.gamma, dim = -1)
       gamma = model.forward_fn.gamma
       gamma = gamma[0, :] # .cpu().detach().numpy()
       alpha = torch.softmax(model.prior.alpha, dim = -1)
@@ -253,6 +251,6 @@ if __name__ == "__main__":
       estimated = match_topics(gamma, truth)
       
       topics = list(range(K))
-      visualize_topics(topics, V, truth, estimated, f'topic{config_index}')
+      visualize_topics(topics, V, truth, estimated, f'otp{config_index}')
     
    

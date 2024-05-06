@@ -91,19 +91,13 @@ else:
     observed_counts = np.stack(observed_counts, axis=1)
     true_p = p
     write_pickle((observed_counts, true_rates, true_p), data_path)
-    # np.save(data_path, observed_counts)
 
-    # plt.figure()
-    # for i in range(30):
-    #     plt.plot(observed_counts[i])
-    #     plt.savefig(f'hypertrue.png')
 
 
 X = torch.from_numpy(observed_counts).unsqueeze(-1).float()
 true_rates = sorted(true_rates)
-print(true_rates, true_p)
+print(true_rates, true_p, ver)
 
-# [12, 87, 60, 33]
 K, tau = 4, 0.1
 m, s = 4, 2
 D = 64
@@ -120,7 +114,8 @@ phi = PoissonBackward(D, L, K, tau)
 model = PoissonModel(K, tau, m, s, device)
 
 lr = 0.005
-num_epochs = 50
+
+num_epochs = 1000
 fopt = torch.optim.Adam(model.parameters(), lr=lr)
 bopt = torch.optim.Adam(phi.parameters(), lr=lr)
 
@@ -131,7 +126,9 @@ train_loader = DataLoader(train_indices, batch_size=500, shuffle=True)
 if os.path.isfile(model_path):
     prev_loss = load_model(model, fopt, None, model_path, device)
 else:
-    prev_loss = 20.
+    prev_loss = 30.
+
+print('Previous loss', prev_loss)
 
 def compute_loss(x, xhat, z, zhat, eta, metric):
       
@@ -178,13 +175,17 @@ X = X.to(device)
 
 if action == 'train':
     # model = nn.DataParallel(model, device_ids)
+   
+        
     model.to(device)
     phi.to(device)
     print('Training begins ...')
     model.train()
     phi.train()
+    
     for epoch in range(num_epochs):
-        
+
+      
         Loss = 0
         for idx in train_loader:
             x = X[idx, ]
@@ -213,7 +214,7 @@ if action == 'train':
         
         Loss /= len(train_loader)
     
-        if epoch % 10 == 0 or Loss < prev_loss:
+        if epoch % 100 == 0 or Loss < prev_loss:
             p = model.prior.get_transition_matrix()
             rates = torch.exp(model.forward_fn.rate)
             a = rates[:, 0].detach().cpu().round().tolist()
@@ -233,6 +234,7 @@ if action == 'train':
                         'prev_loss': prev_loss,
                         }
             torch.save(ckpt, model_path)
+
         
 else:
     if os.path.isfile(model_path):
@@ -241,9 +243,6 @@ else:
         model.to(device)
         model.eval()
         load_model(model, None, None, model_path, device)
-        # X_tilde, logits, target = model(X)
-        # loss = nn.SmoothL1Loss()(X_tilde, X.squeeze())
-        # print('Reconstruction loss:', loss)
         rate = torch.exp(model.forward_fn.rate)
         
         rate = rate[:, 0].detach().cpu().tolist()
@@ -252,7 +251,7 @@ else:
         p = model.prior.get_transition_matrix()
         p = p[0,0].item()
         print(p)
-        file = open(f'hmm_result_{batch}.txt', 'a+')
+        file = open(f'result/hmm_result_{batch}.txt', 'a+')
         file.write(f"V{ver};{str(true_rates)};{str(rate)};{true_p};{p}\n")
         file.close()
         

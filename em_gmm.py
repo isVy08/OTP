@@ -1,25 +1,9 @@
-from utils_io import load_pickle, write_pickle
 import numpy as np
-import sys
 from scipy.stats import multivariate_normal
-from scipy import special
-
-
-no = sys.argv[1]
-root = sys.argv[2]
-data_path = f'data/gmm/data{no}.pkl'
-X, true_pi, true_mu, labels = load_pickle(data_path)
-
-labels = labels.cpu().numpy()
-true_mu = true_mu.numpy().round(4)
-true_pi = true_pi.numpy().round(4)
-true_mu = np.sort(true_mu)
-true_pi = np.sort(true_pi)
-X = X.cpu().numpy()
 
 class GMM:
 
-    def __init__(self,X,number_of_sources,iterations):
+    def __init__(self, X, number_of_sources, iterations, setting, true_mu, true_pi):
         self.iterations = iterations
         self.number_of_sources = number_of_sources
         self.X = X
@@ -27,9 +11,14 @@ class GMM:
         self.pi = None
         self.cov = None
         self.XY = None
+        self.setting = setting
 
         self.mus = []
         self.pis = []
+
+
+        self.true_mu = true_mu # sorted array shape (K * D)
+        self.true_pi = true_pi # sorted array shape (K,)
         
     
 
@@ -48,14 +37,22 @@ class GMM:
 
         self.pi = np.ones(self.number_of_sources)/self.number_of_sources # Are "Fractions"
         
-        if root in ('pgmm', 'vpgmm'):
+        if self.setting in ('pgmm', 'vpgmm'):
             # Misspecified settings
             probs = np.random.uniform(0,1) # true_pi[1] + 0.2 
             if probs > 0.5:
                 self.pi = np.array([1-probs, probs])
             else:
                 self.pi = np.array([probs, 1-probs])
-        elif root in ('vgmm', 'vpgmm'):
+                
+        if self.setting == 'vgmm':
+            probs = self.true_pi[1]
+            if probs > 0.5:
+                self.pi = np.array([1-probs, probs])
+            else:
+                self.pi = np.array([probs, 1-probs])
+
+        if self.setting in ('vgmm', 'vpgmm'):
             for dim in range(len(self.cov)):
                 eps = np.random.uniform(0,2)
                 self.cov[dim] = self.cov[dim] * eps
@@ -66,7 +63,7 @@ class GMM:
         """Plot the initial state"""    
         
         for i in range(self.iterations):    
-            print(f'Running {root} model ...')           
+            print(f'Running {self.setting} model ...')  
 
             """E Step"""
             r_ic = np.zeros((len(self.X),len(self.cov)))
@@ -104,7 +101,7 @@ class GMM:
             # Calculate the new mean vector and new covariance matrices, based on the probable membership of the single x_i to classes c --> r_ic
             self.mu = []
             # self.cov = []
-            if root not in ('pgmm', 'vpgmm'):
+            if self.setting == 'gmm':
                 self.pi = []
             for c in range(len(r_ic[0])):
                 m_c = np.sum(r_ic[:,c],axis=0)
@@ -115,7 +112,7 @@ class GMM:
                 # self.cov.append(((1/m_c)*np.dot((np.array(r_ic[:,c]).reshape(len(self.X),1)*(self.X-mu_c)).T,(self.X-mu_c)))+self.reg_cov)
                 # Calculate pi_new which is the "fraction of points" respectively the fraction of the probability assigned to each source 
                 
-                if root not in ('pgmm', 'vpgmm'):
+                if self.setting == 'gmm':
                     self.pi.append(m_c/np.sum(r_ic)) 
 
                 # Here np.sum(r_ic) gives as result the number of instances. This is logical since we know 
@@ -131,11 +128,11 @@ class GMM:
             self.mus.append([np.sort(self.mu[0]), np.sort(self.mu[1])])
             self.pis.append(np.sort(self.pi))
             print('Iteration:', i)
-            print('- True mu1:', true_mu[0, :])
+            print('- True mu1:', self.true_mu[0, :])
             print('  Est. mu1:', self.mu[0])
-            print('- True mu2:', true_mu[1, :])
+            print('- True mu2:', self.true_mu[1, :])
             print('  Est. mu2:', self.mu[1])
-            print('- True pi :', true_pi)
+            print('- True pi :', self.true_pi)
             print('  Est. pi :', self.pi)
             print('=====================================')
                     
@@ -155,9 +152,3 @@ class GMM:
         #plt.show()
         return prediction
          
-    
-    
-GMM = GMM(X, 2, 1000)     
-GMM.run()
-output = (GMM.mus, GMM.pis)
-write_pickle(output, f'{root}/em{no}.pkl')

@@ -11,22 +11,24 @@ def get_transition_matrix(p, K):
         A = (1 - I) * pp + I * p
         return A
 
-ver = sys.argv[1]
-batch = sys.argv[2]
-action = sys.argv[3]
-
+action = sys.argv[1]
+ver = sys.argv[2]
+batch = sys.argv[3]
+code = sys.argv[4]
 
 print('Loading data ...')
-data_path = f'data/V{ver}.pkl'
+ver = ver + code
+data_path = f'subdata/V{ver}.pkl'
 observed_counts, true_rates, true_p = load_pickle(data_path)
-model_path = f'model_{batch}/em_v{ver}.pkl'
+model_path = f'submodel_{batch}/em_v{ver}.pkl'
+
 
 true_rates = sorted(true_rates)
 
 if action == 'train':
         K = len(true_rates)
         # Fixed transition matrix
-        model = hmm.PoissonHMM(n_components=K, n_iter=50, params="sl", init_params="sl")
+        model = hmm.PoissonHMM(n_components=K, n_iter=5000, params="sl", init_params="sl")
         model.transmat_ = get_transition_matrix(true_p, K)
 
         start = time.time()
@@ -37,7 +39,7 @@ if action == 'train':
 
         end = time.time()
 
-        file = open('em_runtime', 'a+')
+        file = open('subresult/em_runtime', 'a+')
         runtime = end - start
         file.write(str(runtime)+'\n')
 
@@ -57,7 +59,7 @@ if action == 'train':
 else: 
         model = load_pickle(model_path)
         rates = sorted([item[0] for item in model.lambdas_])
-        file = open(f'em_result_{batch}.txt', 'a+')
+        file = open(f'subresult/em_result_{batch}.txt', 'a+')
         file.write(f"V{ver};{str(true_rates)};{str(rates)};{true_p};{true_p}\n")
         file.close()
 
