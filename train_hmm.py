@@ -14,30 +14,11 @@ from geomloss import SamplesLoss
 
 import sys
 action = sys.argv[1]
-ver = sys.argv[2]
-batch = sys.argv[3]
-
-
-def plot_result(predicted, source, path, title = None):
-    fig = plt.figure(figsize=(10, 4))
-    ax = fig.add_subplot(1, 1, 1)
-    ax.plot(predicted, 'o', c='tab:green', lw=1, alpha = 0.8, label='inferred rate')
-    ax.plot(source, c='black', alpha=0.3, label='observed counts')
-    ax.set_ylabel("latent rate")
-    ax.set_xlabel("time")
-    if title:
-        ax.set_title(f"Inferred latent rate over time: {title}")
-    else:
-        ax.set_title("Inferred latent rate over time")
-    ax.legend(loc=4)
-    plt.show()
-    # plt.savefig('segment.pdf')
-    plt.savefig(path)
 
 
 
 # Generating data 
-data_path = f'data/V{ver}.pkl'
+data_path = f'data/hmm.pkl'
 force = False
 if os.path.isfile(data_path) and not force:
     print('Loading data ...')
@@ -96,7 +77,7 @@ else:
 
 X = torch.from_numpy(observed_counts).unsqueeze(-1).float()
 true_rates = sorted(true_rates)
-print(true_rates, true_p, ver)
+print(true_rates, true_p)
 
 K, tau = 4, 0.1
 m, s = 4, 2
@@ -108,7 +89,7 @@ weight = 0.01
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-model_path = f'model_{batch}/hmm_v{ver}.pt'
+model_path = f'model/otp.pt'
 
 phi = PoissonBackward(D, L, K, tau)
 model = PoissonModel(K, tau, m, s, device)
@@ -251,8 +232,5 @@ else:
         p = model.prior.get_transition_matrix()
         p = p[0,0].item()
         print(p)
-        file = open(f'result/hmm_result_{batch}.txt', 'a+')
-        file.write(f"V{ver};{str(true_rates)};{str(rate)};{true_p};{p}\n")
-        file.close()
         
         
