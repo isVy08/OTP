@@ -1,4 +1,4 @@
-# Parameter Estimation in DAGs from Incomplete Data via Optimal Transport
+# OTP
 
 This repo contains codes for reproducing the experiments in the paper [Parameter Estimation in DAGs from Incomplete Data via Optimal Transport](https://arxiv.org/abs/2305.15927) accepted at ICML 2024.
 
